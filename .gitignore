@@ -1,0 +1,15 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
+logs/
+ms_graph_token_cache.json
+microsoft_agent_settings.json
+jarvis_runtime_secrets.json
