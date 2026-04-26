@@ -359,7 +359,38 @@ def _format_mcp_tool_round(tool_calls: Any) -> str:
             raw = raw[:1200] + "…"
         lines.append(f"  → {name}")
         lines.append(f"     {raw}")
+    lines.append("  ℹ RAG status will be reported after each tool call.")
     return "\n".join(lines)
+
+
+def _format_rag_status_from_tool_result(name: str, raw: str) -> str:
+    """Human-readable RAG usage status for one MCP tool result."""
+    if name.startswith("rag_"):
+        return f"RAG status: used dedicated RAG tool `{name}`."
+    text = (raw or "").strip()
+    if not text.startswith("{"):
+        return f"RAG status for `{name}`: not used (non-JSON tool output)."
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return f"RAG status for `{name}`: not used (invalid JSON output)."
+    if not isinstance(data, dict):
+        return f"RAG status for `{name}`: not used."
+    rg = data.get("rag_guidance")
+    if not isinstance(rg, dict):
+        return f"RAG status for `{name}`: not used."
+    ok = bool(rg.get("ok", False))
+    hits = rg.get("hits")
+    hit_count = len(hits) if isinstance(hits, list) else 0
+    tool_name = str(rg.get("tool_name", name))
+    if ok and hit_count > 0:
+        return f"RAG status for `{name}`: used (`{tool_name}`), hits={hit_count}."
+    if ok:
+        return f"RAG status for `{name}`: checked (`{tool_name}`), no matches."
+    err = str(rg.get("error", "")).strip()
+    if err:
+        return f"RAG status for `{name}`: not used ({err})."
+    return f"RAG status for `{name}`: not used."
 
 
 def _chat_tool_loop(
@@ -509,6 +540,11 @@ def _chat_tool_loop(
                 if dup_note:
                     clipped = clipped + dup_note
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": clipped})
+                if before_tool_round is not None:
+                    try:
+                        before_tool_round(_format_rag_status_from_tool_result(name, raw))
+                    except Exception:
+                        pass
                 if name in ("microsoft_mail_mark_read", "microsoft_mail_mark_folder_read") or (
                     name == "microsoft_graph_api"
                     and _graph_patch_to_message(str(args.get("path", "")), str(args.get("method", "")))
